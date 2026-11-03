@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { VERSION, TOT, COLS, ACC, J, MOODS, PR, PC, TODAY, PK, LAST, pkey, phKey, avKey, lkKey, snKey, rd, wr, iso, dayOf, loadProfiles, ping, shrink, hash, load, rec, score, streak, range, series, tick, hold, plan, askNotif, schedule, testNotif, status, analyse, synth, snap, ftKey, alarmList, ringStart, ringStop, expand, syncQuotes, dueToday, exactSetting, ART } from './lib.js'
+import { VERSION, TOT, COLS, ACC, J, MOODS, PR, PC, TODAY, PK, LAST, pkey, phKey, avKey, lkKey, snKey, rd, wr, iso, dayOf, loadProfiles, ping, shrink, hash, load, rec, score, streak, range, series, tick, hold, plan, askNotif, schedule, testNotif, status, analyse, synth, snap, ftKey, alarmList, ringStart, ringStop, expand, syncQuotes, dueToday, exactSetting, SOUNDS, playSnd } from './lib.js'
+import { PAL, SCENE, ICON, AVATARS } from './art.js'
+import { motiv, catStats, trendLine, weekReview, areaAdvice } from './coach.js'
 
 /* ---------- composants de base ---------- */
 const Row = ({ t, sub, r, go }) => (
@@ -8,11 +10,18 @@ const Row = ({ t, sub, r, go }) => (
     {r != null && <span className="chip">{r}</span>}<span className="ar">›</span>
   </button>
 )
-const CM = { g: '#8fe3b0', G: '#34b36a', p: '#b9a2ff', P: '#7c5cf0', y: '#f5e27a' }
-const Logo = ({ size = 72 }) => (
-  <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" aria-hidden="true">
-    {ART.flatMap((r, y) => [...r].map((c, x) => (c === '.' ? null : <rect key={x + '-' + y} x={x} y={y} width="1" height="1" fill={CM[c]} />)))}
-  </svg>
+const Pix = ({ art, size }) => {
+  const w = art[0].length, h = art.length, rects = []
+  art.forEach((r, y) => { let x = 0; while (x < w) { const ch = r[x]; let e = x; while (e < w && r[e] === ch) e++; if (ch !== '.' && PAL[ch]) rects.push(<rect key={x + '-' + y} x={x} y={y} width={e - x} height="1" fill={PAL[ch]} />); x = e } })
+  return <svg viewBox={`0 0 ${w} ${h}`} width={size || '100%'} height={size || '100%'} shapeRendering="crispEdges" aria-hidden="true">{rects}</svg>
+}
+const Logo = ({ size = 72 }) => <Pix art={ICON} size={size} />
+const Av = ({ v, name }) => (v && v.startsWith && v.startsWith('px:') ? <Pix art={AVATARS[+v.slice(3)]?.rows || ICON} /> : v ? <img src={v} alt="" /> : (name?.[0] || '?').toUpperCase())
+const SoundPick = ({ v, on }) => (
+  <div>
+    <div className="seg">{SOUNDS.map(x => <button key={x.id} className={(v || 0) === x.id ? 'on' : ''} onClick={() => { on(x.id); playSnd(x.id) }}>{x.n}</button>)}</div>
+    <button className="mini" style={{ marginTop: 8 }} onClick={() => playSnd(v || 0)}>▶ Écouter</button>
+  </div>
 )
 const DaysPick = ({ v, on }) => <div className="days" style={{ marginTop: 0 }}>{J.map((l, i) => <button key={i} className={'d ' + (v.includes(i) ? 'on' : '')} onClick={() => on(v.includes(i) ? v.filter(x => x !== i) : [...v, i].sort())}>{l}</button>)}</div>
 const Pr = ({ p }) => <span className="pr" style={{ '--pc': PC[p] }}>{PR[p]}</span>
@@ -138,6 +147,41 @@ function Piliers({ s, day, push }) {
   )
 }
 
+function Trends({ s, day }) {
+  const len = [7, 30, Math.max(7, day)][s.rg] || 7
+  return (
+    <div className="card">
+      <b>Analyse du graphique</b>
+      {catStats(s, day, len).map(x => (
+        <div className="item" key={x.id}>
+          <div className="row sp"><span className="cat" style={{ '--cc': x.c }}><i className="dot" />{x.n}</span><b>{x.cur == null ? '—' : x.cur + ' %'} {x.delta == null ? '' : x.delta > 3 ? '▲' : x.delta < -3 ? '▼' : '='}</b></div>
+          <p className="sm" style={{ marginTop: 4 }}>{x.cur == null ? 'Pas encore de données.' : trendLine(x)}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Bilan({ s, day }) {
+  const w = weekReview(s, day), adv = areaAdvice(s, day)
+  const col = w.cur == null ? 'var(--mut)' : w.cur >= 55 ? 'var(--ok)' : w.cur >= 40 ? '#ffb86b' : 'var(--bad)'
+  const dot = { good: 'var(--ok)', mid: '#ffb86b', bad: 'var(--bad)' }
+  return (
+    <>
+      <div className="card" style={{ textAlign: 'center' }}>
+        <p>Ma semaine</p>
+        <div className="px" style={{ fontSize: 30, margin: '14px 0', color: col }}>{w.cur == null ? '—' : w.cur + '%'}</div>
+        <span className="pr" style={{ '--pc': col }}>{w.verdict}</span>
+        <p style={{ marginTop: 12, color: 'var(--tx)' }}>{w.line}</p>
+      </div>
+      {w.weeks.length > 1 && <div className="card"><b>Les dernières semaines</b>{w.weeks.map(x => <div key={x.label}><div className="row sp sm" style={{ margin: '10px 0 6px' }}><span>{x.label}</span><span>{x.v == null ? '—' : x.v + ' %'}</span></div><div className="bar"><i style={{ width: (x.v || 0) + '%' }} /></div></div>)}</div>}
+      {(w.best || w.worst) && <div className="card">{w.best && <div className="item row sp"><span>Meilleur jour</span><b>jour {w.best[0]} · {w.best[1]} %</b></div>}{w.worst && <div className="item row sp"><span>Jour le plus faible</span><b>jour {w.worst[0]} · {w.worst[1]} %</b></div>}</div>}
+      <p className="sm" style={{ margin: '14px 2px 8px' }}>Le point sur chaque domaine</p>
+      {adv.map(a => <div className="card" key={a.k}><span className="cat" style={{ '--cc': dot[a.st] }}><i className="dot" />{a.k}</span><p style={{ margin: '8px 0', color: 'var(--tx)' }}>{a.text}</p><p className="sm">💡 {a.tip}</p></div>)}
+    </>
+  )
+}
+
 function Progress({ s, up, day, push }) {
   const from = range(s, day)
   return (
@@ -150,6 +194,8 @@ function Progress({ s, up, day, push }) {
           {series(s).map(c => <button key={c.id} className={'mini ' + (s.hide[c.id] ? 'off' : '')} style={{ '--cc': c.c }} onClick={() => up(x => { x.hide[c.id] = !x.hide[c.id] })}><i className="dot" />{c.n}</button>)}
         </div>
       </div>
+      <Trends s={s} day={day} />
+      <Row t="Bilan et conseils" sub="Ma semaine, mes points forts et mes faiblesses" r="Voir" go={() => push('bilan')} />
       <Row t="Synthèse" sub="Jour, semaine, mois : ça va ou pas ?" r="Voir" go={() => push('synth')} />
       <Row t="Moyennes" sub="Par catégorie" r="Voir" go={() => push('avg')} />
       <Row t="Mes 300 jours" sub={'Jour ' + day + ' sur ' + TOT} r="Voir" go={() => push('grid')} />
@@ -162,7 +208,7 @@ function Settings({ s, day, av, push, onSwitch, onDelete, lk }) {
   return (
     <>
       <button className="row" style={{ width: '100%', padding: '10px 0 20px', flexDirection: 'column' }} onClick={() => push('me')}>
-        <span className="av">{av ? <img src={av} alt="" /> : (s.name[0] || '?').toUpperCase()}</span>
+        <span className="av"><Av v={av} name={s.name} /></span>
         <h1 className="serif">{s.name}</h1><p>Niveau {1 + Math.floor(day / 30)} · modifier mon profil</p>
       </button>
       <Row t="Apparence" sub="Mode clair ou sombre, couleurs" go={() => push('look')} />
@@ -384,21 +430,40 @@ function Focus({ s, up, say, day, ft, setFt }) {
 
 const JD = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim']
 function Alarms({ s, up, say }) {
-  const [t, setT] = useState('07:00'), [lb, setLb] = useState(''), [ds, setDs] = useState([])
+  const [t, setT] = useState('07:00'), [lb, setLb] = useState(''), [ds, setDs] = useState([]), [sn, setSn] = useState(0)
+  const [ed, setEd] = useState(null)
   const add = async () => {
     if (!t) return say('Choisis une heure')
     if (!(await askNotif())) say('Autorise les notifications pour que l’alarme sonne hors de l’app')
-    up(n => { n.alarms.push({ id: n.nid++, t, label: lb.trim(), days: ds, on: 1 }) }); setLb(''); say('Alarme ajoutée')
+    up(n => { n.alarms.push({ id: n.nid++, t, label: lb.trim(), days: ds, on: 1, snd: sn }) }); setLb(''); setDs([]); say('Alarme ajoutée')
   }
+  const set = (id, k, v) => up(n => { n.alarms.find(y => y.id === id)[k] = v })
   return (
     <>
-      {s.alarms.map(a => (
+      {[...s.alarms].sort((a, b) => a.t.localeCompare(b.t)).map(a => ed === a.id ? (
+        <div className="card" key={a.id}>
+          <div className="row" style={{ gap: 8 }}>
+            <input className="in" type="time" value={a.t} onChange={e => e.target.value && set(a.id, 't', e.target.value)} />
+            <input className="in" value={a.label || ''} placeholder="Nom" maxLength={30} onChange={e => set(a.id, 'label', e.target.value)} />
+          </div>
+          <p className="sm" style={{ margin: '12px 0 8px' }}>Répéter (aucun jour = une seule fois)</p>
+          <DaysPick v={a.days} on={v => set(a.id, 'days', v)} />
+          <p className="sm" style={{ margin: '12px 0 8px' }}>Son</p><SoundPick v={a.snd || 0} on={v => set(a.id, 'snd', v)} />
+          <div className="row" style={{ gap: 8, marginTop: 14 }}>
+            <button className="btn" onClick={() => setEd(null)}>Terminé</button>
+            <button className="btn ghost rel" style={{ width: 'auto' }} onClick={() => { up(n => { n.alarms = n.alarms.filter(y => y.id !== a.id) }); setEd(null) }}>Supprimer</button>
+          </div>
+        </div>
+      ) : (
         <div className="card row sp" key={a.id}>
-          <div className="grow"><div className="px" style={{ fontSize: 18, color: a.on ? 'var(--p)' : 'var(--mut)' }}>{a.t}</div><p className="sm" style={{ marginTop: 6 }}>{a.label || 'Alarme'} · {a.days.length ? a.days.map(i => JD[i]).join(' ') : 'une seule fois'}</p></div>
+          <button className="grow" style={{ textAlign: 'left' }} onClick={() => setEd(a.id)}>
+            <div className="px" style={{ fontSize: 18, color: a.on ? 'var(--p)' : 'var(--mut)' }}>{a.t}</div>
+            <p className="sm" style={{ marginTop: 6 }}>{a.label || 'Alarme'} · {a.days.length ? a.days.map(i => JD[i]).join(' ') : 'une seule fois'} · toucher pour modifier</p>
+          </button>
           <Tg on={!!a.on} go={() => up(n => { const x = n.alarms.find(y => y.id === a.id); x.on = x.on ? 0 : 1 })} />
-          <button className="x" aria-label="Supprimer" onClick={() => up(n => { n.alarms = n.alarms.filter(y => y.id !== a.id) })}>×</button>
         </div>
       ))}
+      {!s.alarms.length && <p className="sm" style={{ marginBottom: 12 }}>Aucune alarme pour l’instant. Tu peux en créer autant que tu veux.</p>}
       <div className="card">
         <b>Nouvelle alarme</b>
         <div className="row" style={{ margin: '12px 0', gap: 8 }}>
@@ -406,7 +471,8 @@ function Alarms({ s, up, say }) {
           <input className="in" value={lb} placeholder="Nom (facultatif)" maxLength={30} onChange={e => setLb(e.target.value)} />
         </div>
         <p className="sm" style={{ marginBottom: 8 }}>Répéter (aucun jour = une seule fois)</p>
-        <div className="days" style={{ marginTop: 0, marginBottom: 14 }}>{JD.map((d, i) => <button key={d} className={'d ' + (ds.includes(i) ? 'on' : '')} aria-label={d} onClick={() => setDs(x => (x.includes(i) ? x.filter(v => v !== i) : [...x, i]))}>{d[0].toUpperCase()}</button>)}</div>
+        <div style={{ marginBottom: 14 }}><DaysPick v={ds} on={setDs} /></div>
+        <p className="sm" style={{ margin: '0 0 8px' }}>Son</p><div style={{ marginBottom: 14 }}><SoundPick v={sn} on={setSn} /></div>
         <button className="btn" onClick={add}>Ajouter l’alarme</button>
       </div>
       <p className="sm">L’alarme sonne avec le son de notification du téléphone, même app fermée. Elle ne passe pas outre le mode « Ne pas déranger ».</p>
@@ -415,6 +481,14 @@ function Alarms({ s, up, say }) {
 }
 
 function Evening({ s, up, day }) {
+  const [txt, setTxt] = useState(s.notes[day] || '')
+  const [saved, setSaved] = useState(true)
+  const tr = useRef(txt), sr = useRef(true), ur = useRef(up)
+  tr.current = txt; sr.current = saved; ur.current = up
+  const save = v => { ur.current(n => { n.notes[day] = v }); setSaved(true); sr.current = true }
+  useEffect(() => { if (saved) return; const t = setTimeout(() => save(txt), 900); return () => clearTimeout(t) }, [txt, saved])
+  useEffect(() => () => { if (!sr.current) ur.current(n => { n.notes[day] = tr.current }) }, [])
+  const past = Object.keys(s.notes).map(Number).filter(d => d !== day && s.notes[d]).sort((a, b) => b - a).slice(0, 15)
   return (
     <>
       <div className="card">
@@ -422,9 +496,18 @@ function Evening({ s, up, day }) {
         <div className="mood">{MOODS.map((m, i) => <button key={i} className={s.mood[day] === i + 1 ? 'on' : ''} aria-label={'Humeur ' + (i + 1)} onClick={() => up(n => { n.mood[day] = i + 1 })}>{m}</button>)}</div>
       </div>
       <div className="card">
-        <p>Une phrase sur ta journée</p>
-        <textarea className="in" maxLength={300} value={s.notes[day] || ''} placeholder="Ce qui s’est bien passé, ce que je garde…" onChange={e => up(n => { n.notes[day] = e.target.value })} />
+        <p>Mon bilan du jour</p>
+        <textarea className="in" maxLength={600} value={txt} placeholder="Ce qui s’est bien passé, ce que je garde…" onChange={e => { setTxt(e.target.value); setSaved(false) }} onBlur={() => { if (!sr.current) save(tr.current) }} />
+        <div className="row sp" style={{ marginTop: 10 }}>
+          <span className="sm">{saved ? '✓ Bilan enregistré' : 'Enregistrement…'}</span>
+          <button className="mini ok" onClick={() => save(txt)}>Enregistrer</button>
+        </div>
       </div>
+      {past.length > 0 && (
+        <div className="card"><b>Mes bilans précédents</b>
+          {past.map(d => <div className="item" key={d}><div className="row sp"><b>Jour {d}</b><span>{MOODS[(s.mood[d] || 0) - 1] || ''}</span></div><p style={{ color: 'var(--tx)', marginTop: 4 }}>{s.notes[d]}</p></div>)}
+        </div>
+      )}
     </>
   )
 }
@@ -555,15 +638,19 @@ function Quotes({ s, up, say }) {
   )
 }
 
-function Me({ s, up, say, av, pickAv, delAv, onRename }) {
+function Me({ s, up, say, av, pickAv, delAv, chooseAv, onRename }) {
   const [nm, setNm] = useState(s.name)
   const save = () => { const n = nm.trim(); if (!n) return; up(x => { x.name = n }); onRename(n); say('Prénom modifié') }
   return (
     <>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <label className="av" aria-label="Changer ma photo">{av ? <img src={av} alt="" /> : (s.name[0] || '?').toUpperCase()}<input type="file" accept="image/*" hidden onChange={pickAv} /></label>
+        <label className="av" aria-label="Changer ma photo"><Av v={av} name={s.name} /><input type="file" accept="image/*" hidden onChange={pickAv} /></label>
         <p className="sm">Touche la photo pour la changer</p>
         {av && <button className="mini rel" style={{ marginTop: 8 }} onClick={delAv}>Retirer la photo</button>}
+      </div>
+      <div className="card"><b>Choisis ton personnage</b>
+        <div className="avg">{AVATARS.map((a, i) => <button key={i} className={'avb ' + (av === 'px:' + i ? 'on' : '')} aria-label={a.n} onClick={() => chooseAv(i)}><Pix art={a.rows} /></button>)}</div>
+        <label className="btn ghost" style={{ display: 'block', textAlign: 'center', marginTop: 12 }}>Ou une photo de ma galerie<input type="file" accept="image/*" hidden onChange={pickAv} /></label>
       </div>
       <div className="card"><p style={{ marginBottom: 10 }}>Mon prénom</p><div className="row"><input className="in" value={nm} maxLength={20} onChange={e => setNm(e.target.value)} /><button className="mini ok" onClick={save}>Valider</button></div></div>
     </>
@@ -698,7 +785,7 @@ function Terms() {
 const fmt = d => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 const ICO = { good: '✅ ', warn: '⚠️ ', info: '💡 ' }
 const MN = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const HH = 44
+const HH = 34
 const mins = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
 const hhmm = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0')
 const evEnd = p => (p.end && mins(p.end) > mins(p.time) ? mins(p.end) : mins(p.time) + 60)
@@ -719,7 +806,7 @@ function TimeGrid({ s, days, t0, push, setSel }) {
         {days.map(d => <div key={d} className="adc">{s.plans.filter(p => p.date === d && !p.time).map(p => <button key={p.id} className="adv" style={{ background: col(p.c), opacity: p.d ? 0.5 : 1 }} onClick={() => push('plan', p.id)}>{p.t}</button>)}</div>)}
       </div>
       <div className="tgs" ref={r}>
-        <div className="tgi" style={{ height: 24 * HH }}>
+        <div className="tgi" style={{ height: 24 * HH, '--hh': HH + 'px' }}>
           <div className="hrs">{Array.from({ length: 24 }, (_, h) => <span key={h} style={{ top: h * HH - 6 }}>{h ? h + ':00' : ''}</span>)}</div>
           {days.map(d => (
             <div key={d} className="tcol" onClick={e => { const y = e.clientY - e.currentTarget.getBoundingClientRect().top; push('newplan', { date: d, time: hhmm(Math.floor(y / HH * 2) * 30) }) }}>
@@ -802,12 +889,12 @@ function Agenda({ s, up, push }) {
 function NewPlan({ s, up, say, a, pop }) {
   const init = a && typeof a === 'object' ? a : { date: a }
   const [t, setT] = useState(''), [d, setD] = useState(init.date || iso(new Date())), [tm, setTm] = useState(init.time || ''), [en, setEn] = useState('')
-  const [c, setC] = useState(s.cats[0]?.id), [p, setP] = useState(1), [al, setAl] = useState(false)
+  const [c, setC] = useState(s.cats[0]?.id), [p, setP] = useState(1), [al, setAl] = useState(true), [sn, setSn] = useState(0)
   const [rep, setRep] = useState(0), [days, setDays] = useState([]), [until, setUntil] = useState('')
   const save = () => {
     const x = t.trim()
     if (!x) return say('Donne un nom au programme')
-    const base = { t: x, time: tm, end: tm ? en : '', c, p: p + 1, al: al && tm ? 1 : 0 }
+    const base = { t: x, time: tm, end: tm ? en : '', c, p: p + 1, al: al && tm ? 1 : 0, snd: sn }
     const wd = (new Date(d + 'T00:00:00').getDay() + 6) % 7
     up(n => {
       if (!rep) n.plans.push({ id: n.nid++, date: d, d: 0, ...base })
@@ -820,9 +907,11 @@ function NewPlan({ s, up, say, a, pop }) {
       <div className="card">
         <input className="in" style={{ width: '100%' }} value={t} placeholder="Quoi ? (ex. Séance de sport)" maxLength={60} onChange={e => setT(e.target.value)} />
         <div className="row" style={{ margin: '12px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Date</span><input className="in" type="date" value={d} onChange={e => e.target.value && setD(e.target.value)} /></div>
-        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Heure</span><input className="in" type="time" value={tm} onChange={e => setTm(e.target.value)} /><input className="in" type="time" value={en} disabled={!tm} onChange={e => setEn(e.target.value)} aria-label="Heure de fin" /></div>
-        <p className="sm" style={{ marginTop: 6 }}>Sans heure : toute la journée. Début puis fin.</p>
-        <div className="row sp" style={{ marginTop: 12 }}><div><b>Alarme à l’heure</b><p className="sm">Sonne à l’heure exacte (sinon rappel 10 min avant)</p></div><Tg on={al && !!tm} go={() => tm && setAl(!al)} /></div>
+        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Début</span><input className="in" type="time" value={tm} onChange={e => { const v = e.target.value; setTm(v); if (v && (!en || en === hhmm(mins(tm || v) + 60))) setEn(hhmm(mins(v) + 60)) }} /></div>
+        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Fin</span><input className="in" type="time" value={en} disabled={!tm} onChange={e => setEn(e.target.value)} /></div>
+        <p className="sm" style={{ marginTop: 6 }}>Sans heure de début : toute la journée.</p>
+        <div className="row sp" style={{ marginTop: 12 }}><div><b>Alarme début et fin</b><p className="sm">Sonne à l’heure de début et à l’heure de fin (sinon rappel 10 min avant)</p></div><Tg on={al && !!tm} go={() => tm && setAl(!al)} /></div>
+        {al && tm && <div style={{ marginTop: 10 }}><p className="sm" style={{ marginBottom: 8 }}>Son de l’alarme</p><SoundPick v={sn} on={setSn} /></div>}
         <p style={{ margin: '14px 0 8px' }}>Priorité</p><Seg opts={PR.slice(1)} v={p} on={setP} />
         <p style={{ margin: '14px 0 8px' }}>Catégorie</p>
         <select className="in" style={{ width: '100%' }} value={c} onChange={e => setC(e.target.value)}>{s.cats.map(x => <option key={x.id} value={x.id}>{x.n}</option>)}</select>
@@ -847,8 +936,10 @@ function PlanPage({ s, up, a, pop }) {
         {p.gid && <p className="sm" style={{ marginBottom: 8 }}>🔁 Événement récurrent : tes changements ne touchent que celui-ci.</p>}
         <input className="in" style={{ width: '100%' }} value={p.t} maxLength={60} onChange={e => set('t', e.target.value)} />
         <div className="row" style={{ margin: '12px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Date</span><input className="in" type="date" value={p.date} onChange={e => e.target.value && set('date', e.target.value)} /></div>
-        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Heure</span><input className="in" type="time" value={p.time} onChange={e => set('time', e.target.value)} /><input className="in" type="time" value={p.end || ''} disabled={!p.time} onChange={e => set('end', e.target.value)} aria-label="Heure de fin" /></div>
-        <div className="row sp" style={{ marginTop: 12 }}><div><b>Alarme à l’heure</b><p className="sm">Sonne à l’heure exacte</p></div><Tg on={!!p.al && !!p.time} go={() => p.time && set('al', p.al ? 0 : 1)} /></div>
+        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Début</span><input className="in" type="time" value={p.time} onChange={e => { const v = e.target.value; up(n => { const x = n.plans.find(y => y.id === a); x.time = v; if (v && !x.end) x.end = hhmm(mins(v) + 60) }) }} /></div>
+        <div className="row" style={{ margin: '10px 0 0', gap: 8 }}><span className="sm" style={{ width: 54 }}>Fin</span><input className="in" type="time" value={p.end || ''} disabled={!p.time} onChange={e => set('end', e.target.value)} /></div>
+        <div className="row sp" style={{ marginTop: 12 }}><div><b>Alarme début et fin</b><p className="sm">Sonne à l’heure de début et à l’heure de fin</p></div><Tg on={!!p.al && !!p.time} go={() => p.time && set('al', p.al ? 0 : 1)} /></div>
+        {p.al && p.time ? <div style={{ marginTop: 10 }}><p className="sm" style={{ marginBottom: 8 }}>Son de l’alarme</p><SoundPick v={p.snd || 0} on={v => set('snd', v)} /></div> : null}
         <p style={{ margin: '14px 0 8px' }}>Priorité</p><Seg opts={PR.slice(1)} v={p.p - 1} on={i => set('p', i + 1)} />
         <p style={{ margin: '14px 0 8px' }}>Catégorie</p>
         <select className="in" style={{ width: '100%' }} value={p.c} onChange={e => set('c', e.target.value)}>{s.cats.map(x => <option key={x.id} value={x.id}>{x.n}</option>)}</select>
@@ -922,6 +1013,7 @@ const SC = {
   avg: ['Moyennes', Avg], grid: ['Mes 300 jours', Grid], photos: ['Photos d’évolution', Photos],
   day: ['Jour du parcours', DayPick], cats: ['Catégories', Cats], quotes: ['Mes citations', Quotes], terms: ['Conditions d’utilisation', Terms],
   newplan: ['Nouveau programme', NewPlan], plan: ['Programme', PlanPage], coach: ['Assistant', Coach], synth: ['Synthèse', Synth],
+  bilan: ['Bilan et conseils', Bilan],
   me: ['Mon profil', Me], look: ['Apparence', Look], notif: ['Notifications', Notif], sec: ['Mot de passe', Sec], data: ['Données et sauvegardes', Data],
 }
 const TABS = [
@@ -956,7 +1048,7 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
   const [toast, setToast] = useState('')
   const [av, setAv] = useState(() => rd(avKey(id), null))
   const [lk, setLk] = useState(() => rd(lkKey(id), null))
-  const [locked, setLocked] = useState(!!rd(lkKey(id), null))
+  const [locked, setLocked] = useState(false)
   const lkr = useRef(lk); lkr.current = lk
   const [ft, setFt] = useState(() => rd(ftKey(id), null) || { dur: 1500, left: 1500, on: false, end: null })
   const [ring, setRing] = useState(null)
@@ -970,7 +1062,7 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
   useEffect(() => { wr(pkey(id), s) }, [s])
   useEffect(() => { wr(ftKey(id), ft) }, [ft])
   useEffect(() => { syncQuotes(s) }, [s.quotes, s.accent])
-  useEffect(() => { if (ring) ringStart(); else ringStop() }, [ring])
+  useEffect(() => { if (ring) ringStart(ring.snd); else ringStop() }, [ring])
   useEffect(() => {
     const t = setTimeout(() => schedule([
       ...plan(s, day), ...alarmList(s),
@@ -989,7 +1081,7 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
           setFt({ ...f, on: false, end: null, left: f.dur })
           const dd = dayOf(st.start)
           up2.current(n => { n.focus[dd] = (n.focus[dd] || 0) + 1; n.fmin[dd] = (n.fmin[dd] || 0) + Math.round(f.dur / 60) })
-          setRing({ title: 'Focus terminé', body: 'Bravo ! Prends une pause.', time: '' })
+          setRing({ title: 'Focus terminé', body: 'Bravo ! Prends une pause.', time: '', m: motiv('focus', Date.now() % 7) })
         }
       }
       const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'), wd = (d.getDay() + 6) % 7
@@ -997,8 +1089,19 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
         const k = a.id + iso(d) + hm
         if (!a.on || a.t !== hm || fired.current[k] || (a.days.length && !a.days.includes(wd))) return
         fired.current[k] = 1
-        setRing({ title: a.label || 'Alarme', body: a.t, time: a.t, snooze: true })
+        setRing({ title: a.label || 'Alarme', body: a.t, time: a.t, snooze: true, snd: a.snd, m: motiv('alarm', a.id) })
         if (!a.days.length) up2.current(n => { const x = n.alarms.find(y => y.id === a.id); if (x) x.on = 0 })
+      })
+      st.tasks.forEach((t, ti) => {
+        if (!t.time || t.d || t.time !== hm || (t.days?.length && !t.days.includes(wd))) return
+        const k = 't' + ti + iso(d) + hm
+        if (fired.current[k]) return
+        fired.current[k] = 1; setRing({ title: 'Tâche : ' + t.t, body: t.time, time: t.time, m: motiv('task', ti) })
+      })
+      st.plans.forEach(p => {
+        if (!p.al || p.d || p.date !== iso(d)) return
+        if (p.time === hm && !fired.current['s' + p.id + hm]) { fired.current['s' + p.id + hm] = 1; setRing({ title: 'Début : ' + p.t, body: p.time + (p.end ? ' → ' + p.end : ''), time: p.time, snd: p.snd, m: motiv('start', p.id) }) }
+        if (p.end === hm && !fired.current['e' + p.id + hm]) { fired.current['e' + p.id + hm] = 1; setRing({ title: 'Fin : ' + p.t, body: 'Il est ' + p.end + '. Temps écoulé.', time: p.end, snd: p.snd, m: motiv('end', p.id) }) }
       })
       const z = snr.current
       if (z && Date.now() >= z.at) { setSnz(null); setRing({ title: z.label, body: 'Alarme reportée', time: hm, snooze: true }) }
@@ -1035,6 +1138,7 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
     try { const img = await shrink(f, 200); if (wr(avKey(id), img)) setAv(img); else say('Espace plein') } catch { say('Photo illisible') }
   }
   const delAv = () => { localStorage.removeItem(avKey(id)); setAv(null) }
+  const chooseAv = i => { wr(avKey(id), 'px:' + i); setAv('px:' + i) }
   const confirmDelete = () => onDelete()
 
   const stopRing = () => setRing(null)
@@ -1044,7 +1148,8 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
       <div className="card" style={{ textAlign: 'center', width: '100%', maxWidth: 360 }}>
         {ring.time && <div className="px" style={{ fontSize: 28, color: 'var(--p)', margin: '10px 0' }}>{ring.time}</div>}
         <h1 className="serif" style={{ margin: '8px 0' }}>{ring.title}</h1>
-        <p style={{ marginBottom: 16 }}>{ring.body}</p>
+        <p style={{ marginBottom: 12 }}>{ring.body}</p>
+        {ring.m && <p className="serif" style={{ fontSize: 20, color: 'var(--tx)', margin: '0 0 18px' }}>{ring.m}</p>}
         <button className="btn" onClick={stopRing}>Arrêter</button>
         {ring.snooze && <button className="btn ghost" style={{ marginTop: 8 }} onClick={snooze}>Reporter 5 min</button>}
       </div>
@@ -1053,7 +1158,7 @@ function Main({ id, name, onSwitch, onDelete, onRename }) {
   if (locked && lk) return <><Lock lk={lk} onOk={() => setLocked(false)} onForgot={() => { if (confirm('Supprimer ce profil et ses données ?')) confirmDelete() }} />{ov}</>
 
   const top = nav[nav.length - 1]
-  const P = { s, up, say, day, id, push, pop, lk, setLk, av, pickAv, delAv, onRename, ft, setFt, a: top?.a }
+  const P = { s, up, say, day, id, push, pop, lk, setLk, av, pickAv, delAv, chooseAv, onRename, ft, setFt, a: top?.a }
   const tabs = [<Home {...P} />, <Agenda {...P} />, <Piliers {...P} />, <Progress {...P} />, <Settings {...P} onSwitch={onSwitch} onDelete={confirmDelete} />]
   let body = tabs[tab]
   if (top) {
@@ -1090,14 +1195,14 @@ function Welcome({ ps, onPick, onCreate }) {
   const create = () => { if (can) onCreate(nm.trim(), ok) }
   return (
     <div className="app"><div className="view" style={{ textAlign: 'center' }}>
-      <div style={{ marginTop: 10 }}><Logo size={96} /></div><div className="big px" style={{ fontSize: 40, marginTop: 8 }}>ERIO</div>
+      <div style={{ width: 170, margin: "6px auto 0", borderRadius: 16, overflow: "hidden", border: "1px solid var(--line)" }}><Pix art={SCENE} /></div><div className="big px" style={{ fontSize: 40, marginTop: 8 }}>ERIO</div>
       <h1 className="serif" style={{ margin: '18px 0 8px', fontSize: 36 }}>10 mois pour changer</h1>
       <p style={{ marginBottom: 24 }}>Sport, projets, tâches, mauvaises habitudes.<br />Un jour à la fois.</p>
       {ps.length > 0 && <>
         <p className="sm" style={{ marginBottom: 8 }}>Qui es-tu ?</p>
         {ps.map(p => { const im = rd(avKey(p.id), null); return (
           <button key={p.id} className="card row sp lk" onClick={() => onPick(p.id)}>
-            <span className="row">{im ? <img className="th" src={im} alt="" /> : <span className="th">{p.name[0]}</span>}<b>{p.name}</b></span><span className="ar">›</span>
+            <span className="row"><span className="th"><Av v={im} name={p.name} /></span><b>{p.name}</b></span><span className="ar">›</span>
           </button>) })}
       </>}
       <div className="card" style={{ textAlign: 'left', marginTop: 14 }}>
@@ -1120,17 +1225,64 @@ function Welcome({ ps, onPick, onCreate }) {
   )
 }
 
+function Gate({ p, onEnter, onSwitch, onDelete }) {
+  const id = p.id
+  const [lk, setLk] = useState(() => rd(lkKey(id), null))
+  const [pw, setPw] = useState(''), [p1, setP1] = useState(''), [p2, setP2] = useState('')
+  const [err, setErr] = useState(''), [mode, setMode] = useState(0)
+  const av = rd(avKey(id), null)
+  const check = async () => !lk || (await hash(pw, lk.salt)) === lk.h
+  const enter = async () => { if (await check()) onEnter(); else { setErr('Mot de passe incorrect.'); setPw('') } }
+  const activate = async () => {
+    if (p1.length < 4) return setErr('4 caractères minimum')
+    if (p1 !== p2) return setErr('Les deux mots de passe diffèrent')
+    const salt = Math.random().toString(36).slice(2), v = { salt, h: await hash(p1, salt) }
+    wr(lkKey(id), v); setLk(v); setMode(0); setP1(''); setP2(''); setErr(''); onEnter()
+  }
+  const disable = async () => {
+    if (!(await check())) { setErr('Entre ton mot de passe actuel pour le désactiver.'); return }
+    localStorage.removeItem(lkKey(id)); setLk(null); setPw(''); setErr('')
+  }
+  const inp = (v, f, ph) => <input className="in" type="password" style={{ width: '100%', marginBottom: 8 }} value={v} placeholder={ph} onChange={e => { f(e.target.value); setErr('') }} />
+  return (
+    <div className="app"><div className="view" style={{ textAlign: 'center', paddingTop: 40 }}>
+      <span className="av" style={{ width: 96, height: 96 }}><Av v={av} name={p.name} /></span>
+      <h1 className="serif" style={{ margin: '4px 0 18px' }}>{p.name}</h1>
+      {lk && mode === 0 && <>
+        {inp(pw, setPw, 'Mot de passe')}
+        <button className="btn" onClick={enter}>Entrer</button>
+      </>}
+      {!lk && mode === 0 && <button className="btn" onClick={onEnter}>Entrer</button>}
+      {mode === 1 && <div className="card" style={{ textAlign: 'left' }}>
+        <b>Choisir un mot de passe</b>
+        <div style={{ margin: '10px 0 0' }}>{inp(p1, setP1, 'Nouveau mot de passe')}{inp(p2, setP2, 'Répéter le mot de passe')}</div>
+        <button className="btn" onClick={activate}>Activer et entrer</button>
+        <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => { setMode(0); setErr('') }}>Annuler</button>
+      </div>}
+      {err && <p style={{ color: 'var(--bad)', margin: '10px 0' }}>{err}</p>}
+      {mode === 0 && <div className="card row sp" style={{ marginTop: 16, textAlign: 'left' }}>
+        <div><b>Mot de passe</b><p className="sm">{lk ? 'Activé : tape-le ci-dessus pour le désactiver' : 'Désactivé'}</p></div>
+        {lk ? <button className="mini" onClick={disable}>Désactiver</button> : <button className="mini ok" onClick={() => setMode(1)}>Activer</button>}
+      </div>}
+      <button className="mini" style={{ marginTop: 16 }} onClick={onSwitch}>Changer de profil</button>
+      {lk && <div><button className="mini" style={{ marginTop: 10 }} onClick={() => { if (confirm('Mot de passe oublié ? Cela supprime ce profil et ses données.')) onDelete() }}>Mot de passe oublié</button></div>}
+    </div></div>
+  )
+}
+
 export default function App() {
   const [ps, setPs] = useState(loadProfiles)
   const [pid, setPid] = useState(() => { try { return localStorage.getItem(LAST) } catch { return null } })
+  const [open, setOpen] = useState(false)
   const save = (list, id) => {
     setPs(list); setPid(id)
     try { localStorage.setItem(PK, JSON.stringify(list)); id ? localStorage.setItem(LAST, id) : localStorage.removeItem(LAST) } catch {}
   }
   const cur = ps.find(p => p.id === pid)
-  if (!cur) return <Welcome ps={ps} onPick={id => save(ps, id)}
-    onCreate={(name, consent) => { const id = 't' + Date.now().toString(36); save([...ps, { id, name, terms: iso(new Date()) }], id); if (consent) ping(name) }} />
-  return <Main key={cur.id} id={cur.id} name={cur.name} onSwitch={() => save(ps, null)}
-    onRename={n => save(ps.map(p => p.id === cur.id ? { ...p, name: n } : p), cur.id)}
-    onDelete={() => { try { [pkey, avKey, phKey, lkKey, snKey].forEach(f => localStorage.removeItem(f(cur.id))) } catch {} save(ps.filter(p => p.id !== cur.id), null) }} />
+  const del = () => { try { [pkey, avKey, phKey, lkKey, snKey].forEach(f => localStorage.removeItem(f(cur.id))) } catch {} setOpen(false); save(ps.filter(p => p.id !== cur.id), null) }
+  if (!cur) return <Welcome ps={ps} onPick={id => { setOpen(false); save(ps, id) }}
+    onCreate={(name, consent) => { const id = 't' + Date.now().toString(36); save([...ps, { id, name, terms: iso(new Date()) }], id); setOpen(true); if (consent) ping(name) }} />
+  if (!open) return <Gate p={cur} onEnter={() => setOpen(true)} onSwitch={() => save(ps, null)} onDelete={del} />
+  return <Main key={cur.id} id={cur.id} name={cur.name} onSwitch={() => { setOpen(false); save(ps, null) }}
+    onRename={n => save(ps.map(p => p.id === cur.id ? { ...p, name: n } : p), cur.id)} onDelete={del} />
 }

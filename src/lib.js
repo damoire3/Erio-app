@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 import { LocalNotifications as LN } from '@capacitor/local-notifications'
 import { Preferences } from '@capacitor/preferences'
+import { motiv, weekReview } from './coach.js'
 
 export const VERSION = '2.2'
 export const TOT = 300
@@ -19,7 +20,6 @@ export const lkKey = id => 'app300:lk:' + id
 export const snKey = id => 'app300:sn:' + id
 export const wdNow = () => (new Date().getDay() + 6) % 7
 export const dueToday = t => !t.days || !t.days.length || t.days.includes(wdNow())
-export const ART = ['................', '.........gg..gg.', '.........ggGGgg.', '......y...gGGg..', '...........GG...', '..........pppp..', '..........PPPP..', '...y......PPPP..', '......ppppPPPP..', '......PPPPPPPP..', '......PPPPPPPP..', '..ppppPPPPPPPP..', '..PPPPPPPPPPPP..', '..PPPPPPPPPPPP..', '..PPPPPPPPPPPP..', '................']
 export const ftKey = id => 'app300:ft:' + id
 
 export const rd = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } }
@@ -90,7 +90,7 @@ export function expand(n) {
       if (g.until && k > g.until) break
       const wd = (d.getDay() + 6) % 7
       if (g.rep === 'd' || (g.rep === 'w' && g.days.includes(wd)) || (g.rep === 'm' && d.getDate() === +g.start.slice(8)))
-        n.plans.push({ id: n.nid++, gid: g.gid, t: g.t, date: k, time: g.time, end: g.end, c: g.c, p: g.p, al: g.al, d: 0 })
+        n.plans.push({ id: n.nid++, gid: g.gid, t: g.t, date: k, time: g.time, end: g.end, c: g.c, p: g.p, al: g.al, snd: g.snd, d: 0 })
       g.last = k
     }
   })
@@ -150,19 +150,23 @@ export function plan(s, day) {
     if (h.length) add(o, 3, 12, 30, 'Priorité haute', h.slice(0, 3).map(t => t.t).join(' · '))
     if (!o && st > 0 && pend.length) add(o, 4, 21, 0, 'Ta série de ' + st + ' jour(s) est en danger', pend.length + ' tâche(s) à faire avant minuit.')
     if (s.notif.q) [10, 15, 19].forEach((hh, i) => add(o, 5 + i, hh, 0, 'Citation', q(o + i)))
+    if ((wdNow() + o) % 7 === 6) add(o, 9, 20, 0, 'Bilan de la semaine', o ? 'Fais le point sur ta semaine dans Erio.' : weekReview(s, day).line)
   }
   for (let o = 0; o < 3; o++) s.tasks.forEach((t, i) => {
     if (!t.time || (o === 0 && t.d)) return
     if (t.days?.length && !t.days.includes((wdNow() + o) % 7)) return
     const [h, m] = t.time.split(':').map(Number)
-    add(o, 0, h, m, 'Tâche', t.t, 3000 + i * 3 + o)
+    add(o, 0, h, m, 'Tâche', t.t + ' — ' + motiv('task', i + o), 3000 + i * 3 + o, 'alarm')
   })
   s.plans.filter(p => !p.d).forEach(p => {
     const o = Math.round((new Date(p.date + 'T00:00:00') - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5)
     if (o < 0 || o > 2) return
     const [h, m] = (p.time || s.notif.m || '08:00').split(':').map(Number)
-    if (p.al && p.time) add(o, 0, h, m, 'Alarme : ' + p.t, 'Il est ' + p.time + '.', 1000 + p.id, 'alarm')
-    else add(o, 0, h, m - (p.time ? 10 : 0), 'Programme' + (p.time ? ' à ' + p.time : ''), p.t, 1000 + p.id)
+    if (p.al && p.time) {
+      add(o, 0, h, m, 'Début : ' + p.t, 'Il est ' + p.time + '. ' + motiv('start', p.id), 100000 + p.id * 2, chOf(p.snd))
+      if (p.end) { const [eh, em] = p.end.split(':').map(Number); add(o, 0, eh, em, 'Fin : ' + p.t, 'Il est ' + p.end + '. ' + motiv('end', p.id), 100001 + p.id * 2, chOf(p.snd)) }
+    }
+    else add(o, 0, h, m - (p.time ? 10 : 0), 'Programme' + (p.time ? ' à ' + p.time : ''), p.t + ' — ' + motiv('start', p.id), 1000 + p.id, chOf(p.snd))
   })
   return out
 }
@@ -178,7 +182,7 @@ export async function askNotif() {
 export async function schedule(list) {
   try {
     if (isNative()) {
-      try { await LN.createChannel({ id: 'alarm', name: 'Alarmes', importance: 5, visibility: 1, vibration: true }) } catch {}
+      for (const [id, name, sound] of [['alarm', 'Alarmes'], ['alarm1', 'Alarme perroquet', 'erio1.wav'], ['alarm2', 'Alarme cloche', 'erio2.wav'], ['alarm3', 'Alarme marimba', 'erio3.wav']]) { try { await LN.createChannel({ id, name, importance: 5, visibility: 1, vibration: true, ...(sound ? { sound } : {}) }) } catch {} }
       const p = await LN.getPending()
       if (p.notifications.length) await LN.cancel({ notifications: p.notifications })
       if (list.length) await LN.schedule({ notifications: list.map(x => ({ id: x.id, title: x.title, body: x.body, ...(x.ch ? { channelId: x.ch } : {}), schedule: x.on ? { on: x.on, allowWhileIdle: true } : { at: x.at, allowWhileIdle: true } })) })
@@ -254,19 +258,34 @@ export function alarmList(s) {
   const out = [], now = new Date()
   s.alarms.filter(a => a.on).forEach(a => {
     const [h, m] = a.t.split(':').map(Number), title = a.label || 'Alarme'
-    if (a.days.length) a.days.forEach(d => out.push({ id: 2000 + a.id * 10 + d, on: { weekday: ((d + 1) % 7) + 1, hour: h, minute: m }, title, body: a.t, ch: 'alarm' }))
-    else { const w = new Date(now); w.setHours(h, m, 0, 0); if (w <= now) w.setDate(w.getDate() + 1); out.push({ id: 2000 + a.id * 10, at: w, title, body: a.t, ch: 'alarm' }) }
+    if (a.days.length) a.days.forEach(d => out.push({ id: 2000 + a.id * 10 + d, on: { weekday: ((d + 1) % 7) + 1, hour: h, minute: m }, title, body: a.t + ' — ' + motiv('alarm', a.id), ch: chOf(a.snd) }))
+    else { const w = new Date(now); w.setHours(h, m, 0, 0); if (w <= now) w.setDate(w.getDate() + 1); out.push({ id: 2000 + a.id * 10, at: w, title, body: a.t + ' — ' + motiv('alarm', a.id), ch: chOf(a.snd) }) }
   })
   return out
 }
+export const SOUNDS = [{ id: 0, n: 'Téléphone' }, { id: 1, n: 'Perroquet' }, { id: 2, n: 'Cloche' }, { id: 3, n: 'Marimba' }]
+export const chOf = snd => (snd ? 'alarm' + snd : 'alarm')
 let ac = null, tmr = null
-export function ringStart() {
+const tone = (f0, f1, t, dur, type, vol) => {
+  const o = ac.createOscillator(), g = ac.createGain()
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur)
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02)
+}
+const PAT = {
+  1: t => { [0, 0.45, 0.9].forEach(k => { tone(1400, 2600, t + k, 0.14, 'sine', 0.25); tone(1800, 3000, t + k + 0.2, 0.12, 'sine', 0.22) }) },
+  2: t => { [0, 0.9].forEach(k => { [[880, 1], [1760, 0.5], [2430, 0.25]].forEach(([f, v]) => tone(f, f * 0.995, t + k, 1.4, 'sine', 0.25 * v)) }) },
+  3: t => { [523, 659, 784, 1047, 784, 659].forEach((f, i) => tone(f, f, t + i * 0.2, 0.3, 'triangle', 0.3)) },
+}
+const LEN = { 1: 1.6, 2: 2.4, 3: 1.4 }
+const ctx = () => { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume && ac.resume() }
+const classic = () => tone(880, 880, ac.currentTime, 0.25, 'square', 0.15)
+export function playSnd(n) { try { ctx(); if (PAT[n]) PAT[n](ac.currentTime + 0.02); else classic() } catch {} }
+export function ringStart(n) {
   try {
-    ac = ac || new (window.AudioContext || window.webkitAudioContext)()
-    ac.resume && ac.resume()
-    const beep = () => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = 880; g.gain.value = 0.15; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.25) }
-    beep(); clearInterval(tmr)
-    tmr = setInterval(() => { beep(); navigator.vibrate && navigator.vibrate(300) }, 700)
+    ctx(); clearInterval(tmr)
+    const go = () => { if (PAT[n]) PAT[n](ac.currentTime + 0.02); else classic(); navigator.vibrate && navigator.vibrate(300) }
+    go(); tmr = setInterval(go, ((LEN[n] || 0.7) + 0.6) * 1000)
   } catch {}
 }
 export function ringStop() { clearInterval(tmr); tmr = null }
